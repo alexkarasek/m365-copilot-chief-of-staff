@@ -3,8 +3,8 @@ param()
 
 $ErrorActionPreference = "Stop"
 
-# Run this script from the Chief-of-Staff repository root.
-$Root = (Get-Location).Path
+# The repository root is resolved relative to this script (scripts\..), so the working directory does not matter.
+$Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $CheckpointsDir = Join-Path $Root "checkpoints"
 $ArchiveDir = Join-Path $CheckpointsDir "archive"
 $CurrentFile = Join-Path $CheckpointsDir "Current-Checkpoint.md"
@@ -24,7 +24,7 @@ try {
 
     # Validate expected repository structure and files.
     if (-not (Test-Path -LiteralPath $CheckpointsDir -PathType Container)) {
-        Stop-WithError "Could not find the 'checkpoints' folder. Run this script from the Chief-of-Staff repository root."
+        Stop-WithError "Could not find the 'checkpoints' folder. Expected layout: <repo>\scripts\Rotate-Checkpoint.ps1 and <repo>\checkpoints\."
     }
 
     if (-not (Test-Path -LiteralPath $NewFile -PathType Leaf)) {
@@ -35,13 +35,26 @@ try {
         Stop-WithError "Missing checkpoints\Current-Checkpoint.md. Rotation stopped so no existing checkpoint is lost."
     }
 
-    # Basic validation that the new file looks like a checkpoint.
-    $FirstNonBlankLine = Get-Content -LiteralPath $NewFile |
+    # Basic validation that the new file looks like a complete checkpoint.
+    $NewContent = Get-Content -LiteralPath $NewFile -Raw
+    if ([string]::IsNullOrWhiteSpace($NewContent)) {
+        Stop-WithError "New-Checkpoint.md is empty. Rotation stopped."
+    }
+
+    $FirstNonBlankLine = ($NewContent -split "`r?`n" |
         Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
-        Select-Object -First 1
+        Select-Object -First 1).Trim([char]0xFEFF).TrimEnd()
 
     if ($FirstNonBlankLine -ne "# Chief of Staff Checkpoint") {
         Stop-WithError "New-Checkpoint.md does not begin with '# Chief of Staff Checkpoint'. Rotation stopped."
+    }
+
+    if ($NewContent -notmatch '(?m)^##\s+Checkpoint Metadata\s*$') {
+        Stop-WithError "New-Checkpoint.md is missing the '## Checkpoint Metadata' section. It may be incomplete. Rotation stopped."
+    }
+
+    if ($NewContent -notmatch '(?im)^\s*-?\s*Status:\s*Current\s*$') {
+        Stop-WithError "New-Checkpoint.md metadata does not include 'Status: Current'. It may be incomplete. Rotation stopped."
     }
 
     # Create archive directory if needed.
@@ -49,39 +62,16 @@ try {
         New-Item -ItemType Directory -Path $ArchiveDir | Out-Null
     }
 
-    # Prefer the checkpoint-generated date from the existing Current file.
-    # Fall back to the file's LastWriteTime if metadata cannot be parsed.
-    $CurrentContent = Get-Content -LiteralPath $CurrentFile -Raw
-    $Timestamp = $null
-
-    $Patterns = @(
-        '(?im)^\s*-\s*Checkpoint generated:\s*(.+?)\s*$',
-        '(?im)^\s*Checkpoint generated:\s*(.+?)\s*$'
-    )
-
-    foreach ($Pattern in $Patterns) {
-        $Match = [regex]::Match($CurrentContent, $Pattern)
-        if ($Match.Success) {
-            $RawDate = $Match.Groups[1].Value.Trim()
-            $ParsedDate = [datetime]::MinValue
-
-            if ([datetime]::TryParse($RawDate, [ref]$ParsedDate)) {
-                $Timestamp = $ParsedDate
-                break
-            }
-        }
-    }
-
-    if ($null -eq $Timestamp) {
-        $Timestamp = (Get-Item -LiteralPath $CurrentFile).LastWriteTime
-    }
-
-    $BaseArchiveName = "Checkpoint-{0}.md" -f $Timestamp.ToString("yyyy-MM-dd-HHmm")
-    $ArchiveFile = Join-Path $ArchiveDir $BaseArchiveName
-
-    # Never silently overwrite an archive.
-    if (Test-Path -LiteralPath $ArchiveFile) {
-        Stop-WithError "Archive already exists: $ArchiveFile`nNo files were changed. Resolve the filename collision before retrying."
+    # Name the archive by the moment of archiving (to the second), not by any date
+    # the agent wrote into the checkpoint. Agent-written dates may be date-only,
+    # missing, or unparseable, which previously caused same-day filename collisions.
+    # If a file with that name still exists, add a numeric suffix. Never overwrite.
+    $Stamp = (Get-Date).ToString("yyyy-MM-dd-HHmmss")
+    $ArchiveFile = Join-Path $ArchiveDir ("Checkpoint-{0}.md" -f $Stamp)
+    $Suffix = 1
+    while (Test-Path -LiteralPath $ArchiveFile) {
+        $ArchiveFile = Join-Path $ArchiveDir ("Checkpoint-{0}-{1:00}.md" -f $Stamp, $Suffix)
+        $Suffix++
     }
 
     # Archive current checkpoint.
@@ -99,10 +89,9 @@ try {
         Stop-WithError "Archive integrity verification failed. Current checkpoint was not replaced."
     }
 
-    # Promote the new checkpoint. Move-Item replaces neither silently nor partially:
-    # remove current only after a verified archive exists, then move new into place.
-    Remove-Item -LiteralPath $CurrentFile
-    Move-Item -LiteralPath $NewFile -Destination $CurrentFile
+    # Promote the new checkpoint in a single replacing move so there is never a
+    # moment with no Current-Checkpoint.md. The verified archive already exists.
+    Move-Item -LiteralPath $NewFile -Destination $CurrentFile -Force
 
     if (-not (Test-Path -LiteralPath $CurrentFile -PathType Leaf)) {
         Stop-WithError "Promotion verification failed. The archived checkpoint is safe at: $ArchiveFile"

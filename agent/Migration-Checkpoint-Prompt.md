@@ -22,6 +22,6 @@ Create a downloadable Markdown file named `New-Checkpoint.md` beginning with `# 
 ## Durable Context
 ## Suggested First Status
 
-Metadata should include generated date/time, conversation period when knowable, previous checkpoint date when available, and `Status: Current`.
+Metadata should include `- Checkpoint generated:` as a full ISO 8601 date, time, and UTC offset (for example `2026-10-06T14:32:00-04:00`; never date-only), conversation period when knowable, previous checkpoint date when available, and `Status: Current`.
 
 After creating the file, provide only a brief confirmation that `New-Checkpoint.md` is ready.

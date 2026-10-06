@@ -92,7 +92,7 @@ Use this schema:
 ## Suggested First Status
 
 For checkpoint metadata include:
-- checkpoint generated date/time
+- `- Checkpoint generated:` as a full ISO 8601 date, time, and UTC offset (for example `2026-10-06T14:32:00-04:00`); never date-only
 - conversation period represented when knowable
 - previous checkpoint date when available
 - status: Current
