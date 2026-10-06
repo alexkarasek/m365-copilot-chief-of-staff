@@ -134,7 +134,7 @@ Do not manually overwrite Current during normal rotations. The script preserves 
 
 ## Rotation failures
 
-The script stops rather than guessing if required files are missing, the new checkpoint heading is invalid, an archive filename collision exists, or archive/integrity verification fails.
+The script stops rather than guessing if required files are missing, the new checkpoint is empty, incomplete, or has an invalid heading, or archive/integrity verification fails. Archives are named by the time of rotation to the second (`Checkpoint-yyyy-MM-dd-HHmmss.md`); if that name exists, a numeric suffix is added rather than overwriting.
 
 Correct the displayed problem and retry. Do not delete the old Current checkpoint to force a rotation.
 
