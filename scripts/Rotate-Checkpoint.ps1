@@ -1,10 +1,14 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param()
 
 $ErrorActionPreference = "Stop"
 
-# The repository root is resolved relative to this script (scripts\..), so the working directory does not matter.
-$Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+# Works whether the script sits in <repo>\scripts\ or directly in the repo folder.
+$Root = $PSScriptRoot
+if (-not (Test-Path -LiteralPath (Join-Path $Root "checkpoints") -PathType Container)) {
+    $Parent = Split-Path -Parent $PSScriptRoot
+    if ($Parent -and (Test-Path -LiteralPath (Join-Path $Parent "checkpoints") -PathType Container)) { $Root = $Parent }
+}
 $CheckpointsDir = Join-Path $Root "checkpoints"
 $ArchiveDir = Join-Path $CheckpointsDir "archive"
 $CurrentFile = Join-Path $CheckpointsDir "Current-Checkpoint.md"
